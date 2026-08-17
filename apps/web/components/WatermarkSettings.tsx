@@ -1,25 +1,38 @@
 "use client";
 
+import { useState } from "react";
+import { Save, Check } from "lucide-react";
 import { ObfuscationSettings } from "@/lib/types";
+import { saveWatermarkPrefs } from "@/lib/watermarkPrefs";
 
 interface WatermarkSettingsProps {
   settings: ObfuscationSettings;
   onChange: (settings: ObfuscationSettings) => void;
   brandName: string;
+  onSaveSnippet?: () => void;
 }
 
 export default function WatermarkSettings({
   settings,
   onChange,
   brandName,
+  onSaveSnippet,
 }: WatermarkSettingsProps) {
   const watermark = settings.watermark;
+  const [saved, setSaved] = useState(false);
 
   const preview = watermark.enabled
     ? watermark.useCustomName && watermark.customName.trim()
       ? `// Obfuscated by ${watermark.customName.trim()} | Powered by ${brandName}`
       : `// Obfuscated & secured by ${brandName}`
     : "// No header added";
+
+  const handleSave = () => {
+    saveWatermarkPrefs(watermark);
+    onSaveSnippet?.();
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1800);
+  };
 
   return (
     <section className="border border-charcoal-700 rounded-md p-4 space-y-4">
@@ -90,6 +103,19 @@ export default function WatermarkSettings({
           <p className="text-xs text-slate-500 font-mono bg-charcoal-800 rounded px-3 py-2 border border-charcoal-700">
             {preview}
           </p>
+
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              onClick={handleSave}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs border border-charcoal-600 text-slate-200 hover:border-neon-500 hover:text-neon-500 transition-colors focus-ring"
+            >
+              {saved ? <Check size={14} /> : <Save size={14} />}
+              {saved ? "Saved" : "Save"}
+            </button>
+            <span className="text-xs text-slate-500">
+              Remembers this header and saves the current code to your Vault.
+            </span>
+          </div>
         </>
       )}
     </section>
