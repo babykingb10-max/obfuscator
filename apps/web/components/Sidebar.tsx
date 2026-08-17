@@ -33,14 +33,15 @@ export default function Sidebar({ activeView, onNavigate }: SidebarProps) {
   return (
     <>
       {/* Mobile top bar with hamburger */}
-      <div className="lg:hidden flex items-center justify-between px-4 h-14 border-b border-charcoal-700 bg-charcoal-900 sticky top-0 z-40">
-        <span className="font-display text-sm tracking-wide text-neon-500">
+      <div className="lg:hidden relative flex items-center h-14 border-b border-charcoal-700 bg-charcoal-900 sticky top-0 z-40">
+        <span className="absolute inset-0 flex items-center justify-center font-display text-sm tracking-wide text-neon-500 pointer-events-none">
           ADEVOS-X TECH
         </span>
         <button
           aria-label={open ? "Close menu" : "Open menu"}
+          aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
-          className="p-2 rounded-md text-slate-200 hover:bg-charcoal-800 focus-ring"
+          className="ml-auto mr-3 p-2 rounded-md text-slate-200 hover:bg-charcoal-800 focus-ring relative z-10"
         >
           {open ? <X size={22} /> : <Menu size={22} />}
         </button>
