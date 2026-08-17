@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ScanSearch, Wand2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ScanSearch, Wand2, Save, Trash2 } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import CodeEditorPanel from "@/components/CodeEditorPanel";
 import SettingsPanel from "@/components/SettingsPanel";
@@ -12,6 +12,7 @@ import { DEFAULT_SETTINGS } from "@/lib/presets";
 import { runObfuscation } from "@/lib/obfuscate";
 import { analyzeSourceForSecrets } from "@/lib/securityScanner";
 import { ObfuscationResult, ObfuscationSettings, SecurityAlert } from "@/lib/types";
+import { VaultEntry, deleteVaultEntry, getVaultEntries, saveVaultEntry } from "@/lib/vault";
 
 const SAMPLE_CODE = `function greet(name) {
   const apiKey = "sk_live_51NxSampleKeyDoNotUse";
@@ -32,6 +33,12 @@ export default function Home() {
   const [settings, setSettings] = useState<ObfuscationSettings>(DEFAULT_SETTINGS);
   const [result, setResult] = useState<ObfuscationResult | null>(null);
   const [scanned, setScanned] = useState(false);
+  const [vaultEntries, setVaultEntries] = useState<VaultEntry[]>([]);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    setVaultEntries(getVaultEntries());
+  }, []);
 
   const alerts: SecurityAlert[] = useMemo(
     () => (scanned ? analyzeSourceForSecrets(sourceCode) : []),
@@ -59,6 +66,48 @@ export default function Home() {
     setSettings(next);
   };
 
+  const handleUploadInput = (content: string) => {
+    setSourceCode(content);
+    setResult(null);
+    setScanned(false);
+  };
+
+  const handleClearInput = () => {
+    setSourceCode("");
+    setScanned(false);
+  };
+
+  const handleClearOutput = () => {
+    setResult(null);
+  };
+
+  const handleSave = () => {
+    if (!sourceCode.trim()) return;
+    saveVaultEntry(sourceCode, settings);
+    setVaultEntries(getVaultEntries());
+    setSaveNotice("Saved to vault");
+    setTimeout(() => setSaveNotice(null), 1800);
+  };
+
+  const handleDeleteAll = () => {
+    setSourceCode("");
+    setResult(null);
+    setScanned(false);
+    setSettings(DEFAULT_SETTINGS);
+  };
+
+  const handleLoadVaultEntry = (entry: VaultEntry) => {
+    setSourceCode(entry.sourceCode);
+    setSettings(entry.settings);
+    setResult(null);
+    setScanned(false);
+    setView("obfuscator");
+  };
+
+  const handleDeleteVaultEntry = (id: string) => {
+    setVaultEntries(deleteVaultEntry(id));
+  };
+
   return (
     <div className="flex min-h-screen">
       <Sidebar activeView={view} onNavigate={setView} />
@@ -75,7 +124,7 @@ export default function Home() {
               </p>
             </header>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={handleScan}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm border border-charcoal-600 text-slate-200 hover:border-neon-500 hover:text-neon-500 transition-colors focus-ring"
@@ -90,6 +139,23 @@ export default function Home() {
                 <Wand2 size={16} />
                 Obfuscate
               </button>
+              <button
+                onClick={handleSave}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm border border-charcoal-600 text-slate-200 hover:border-neon-500 hover:text-neon-500 transition-colors focus-ring"
+              >
+                <Save size={16} />
+                Save
+              </button>
+              <button
+                onClick={handleDeleteAll}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm border border-charcoal-600 text-slate-300 hover:border-red-500 hover:text-red-400 transition-colors focus-ring"
+              >
+                <Trash2 size={16} />
+                Delete
+              </button>
+              {saveNotice && (
+                <span className="text-xs text-neon-500">{saveNotice}</span>
+              )}
             </div>
 
             {scanned && (
@@ -101,12 +167,15 @@ export default function Home() {
                 title="Input"
                 value={sourceCode}
                 onChange={setSourceCode}
+                onUpload={handleUploadInput}
+                onClear={handleClearInput}
               />
               <CodeEditorPanel
                 title="Output"
                 value={result?.code ?? "// Obfuscated code will appear here"}
                 readOnly
                 downloadFileName="obfuscated.js"
+                onClear={handleClearOutput}
               />
             </div>
 
@@ -142,13 +211,48 @@ export default function Home() {
                 Obfuscation vault
               </h1>
               <p className="text-sm text-slate-500 mt-1">
-                Sign in to keep a history of the settings you have used. Source code itself is
-                never stored -- only the settings, so you can repeat a past run.
+                Saved snippets and settings are stored locally in this browser. Source code is
+                never sent to a server for this feature.
               </p>
             </header>
-            <div className="border border-dashed border-charcoal-700 rounded-md px-6 py-10 text-center text-sm text-slate-500">
-              No account connected yet. This view is ready for a login integration on the backend.
-            </div>
+
+            {vaultEntries.length === 0 ? (
+              <div className="border border-dashed border-charcoal-700 rounded-md px-6 py-10 text-center text-sm text-slate-500">
+                Nothing saved yet. Use the Save button on the Obfuscator page to add an entry
+                here.
+              </div>
+            ) : (
+              <div className="space-y-2 max-w-2xl">
+                {vaultEntries.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="flex items-center justify-between gap-3 border border-charcoal-700 rounded-md px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm text-slate-200 truncate">{entry.label}</p>
+                      <p className="text-xs text-slate-500">
+                        {new Date(entry.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => handleLoadVaultEntry(entry)}
+                        className="text-xs px-2.5 py-1 rounded border border-neon-500 text-neon-500 hover:bg-neon-500 hover:text-charcoal-950 transition-colors focus-ring"
+                      >
+                        Load
+                      </button>
+                      <button
+                        onClick={() => handleDeleteVaultEntry(entry.id)}
+                        aria-label="Delete saved entry"
+                        className="p-1.5 rounded text-slate-400 hover:text-red-400 hover:bg-charcoal-800 focus-ring"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
 
