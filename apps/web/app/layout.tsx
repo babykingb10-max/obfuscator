@@ -14,6 +14,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+          referrerPolicy="no-referrer"
+        />
+      </head>
       <body className="bg-charcoal-950 text-slate-100 font-body antialiased">
         {children}
       </body>
