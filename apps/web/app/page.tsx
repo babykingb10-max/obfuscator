@@ -8,8 +8,9 @@ import SettingsPanel from "@/components/SettingsPanel";
 import WatermarkSettings from "@/components/WatermarkSettings";
 import SecurityAnalyzer from "@/components/SecurityAnalyzer";
 import StatsBar from "@/components/StatsBar";
+import Toast, { ToastMessage } from "@/components/Toast";
 import { DEFAULT_SETTINGS } from "@/lib/presets";
-import { runObfuscation } from "@/lib/obfuscate";
+import { ObfuscationSyntaxError, runObfuscation } from "@/lib/obfuscate";
 import { analyzeSourceForSecrets } from "@/lib/securityScanner";
 import { ObfuscationResult, ObfuscationSettings, SecurityAlert } from "@/lib/types";
 import { VaultEntry, deleteVaultEntry, getVaultEntries, saveVaultEntry } from "@/lib/vault";
@@ -35,6 +36,7 @@ export default function Home() {
   const [result, setResult] = useState<ObfuscationResult | null>(null);
   const [scanned, setScanned] = useState(false);
   const [vaultEntries, setVaultEntries] = useState<VaultEntry[]>([]);
+  const [toast, setToast] = useState<ToastMessage | null>(null);
 
   useEffect(() => {
     setVaultEntries(getVaultEntries());
@@ -44,17 +46,63 @@ export default function Home() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), toast.type === "error" ? 8000 : 4500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   const alerts: SecurityAlert[] = useMemo(
     () => (scanned ? analyzeSourceForSecrets(sourceCode) : []),
     [scanned, sourceCode]
   );
 
   const handleObfuscate = () => {
-    const res = runObfuscation(sourceCode, settings, BRAND_NAME);
-    setResult(res);
+    if (!sourceCode.trim()) {
+      setToast({
+        type: "warning",
+        title: "No code to obfuscate",
+        description: "Paste or upload your JavaScript code in the Input panel first.",
+      });
+      return;
+    }
+
+    try {
+      const res = runObfuscation(sourceCode, settings, BRAND_NAME);
+      setResult(res);
+      setToast({ type: "success", title: "Code obfuscated successfully." });
+    } catch (err) {
+      if (err instanceof ObfuscationSyntaxError) {
+        setToast({
+          type: "error",
+          title: err.line
+            ? `Syntax error on line ${err.line}${err.column ? `, column ${err.column}` : ""}`
+            : "Syntax error in your code",
+          description: `${err.message}. Please fix your code before obfuscating.`,
+        });
+      } else {
+        setToast({
+          type: "error",
+          title: "Could not obfuscate this code",
+          description:
+            "Something unexpected went wrong while processing your code. Double-check it for mistakes and try again.",
+        });
+      }
+    }
   };
 
-  const handleScan = () => setScanned(true);
+  const handleScan = () => {
+    if (!sourceCode.trim()) {
+      setToast({
+        type: "warning",
+        title: "No code to scan",
+        description: "Paste or upload your JavaScript code in the Input panel first.",
+      });
+      return;
+    }
+    setScanned(true);
+    setToast({ type: "info", title: "Scan complete." });
+  };
 
   const handleFixAutomatically = (alert: SecurityAlert) => {
     let next = { ...settings, level: "custom" as const };
@@ -112,6 +160,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen">
+      <Toast toast={toast} onClose={() => setToast(null)} />
       <Sidebar activeView={view} onNavigate={setView} />
 
       <main className="flex-1 min-w-0 p-4 lg:p-8 space-y-6">
