@@ -8,8 +8,6 @@ import {
   SlidersHorizontal,
   History,
   Info,
-  MessageCircle,
-  Send,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -34,17 +32,17 @@ export default function Sidebar({ activeView, onNavigate }: SidebarProps) {
     <>
       {/* Mobile top bar with hamburger */}
       <div className="lg:hidden w-full relative flex items-center h-14 border-b border-charcoal-700 bg-charcoal-900 sticky top-0 z-40">
-        <span className="absolute inset-0 flex items-center justify-center font-display text-sm tracking-wide text-neon-500 pointer-events-none">
-          ADEVOS-X TECH
-        </span>
         <button
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
-          className="ml-auto mr-3 p-2 rounded-md text-slate-200 hover:bg-charcoal-800 focus-ring relative z-10"
+          className="ml-3 p-2 rounded-md text-slate-200 hover:bg-charcoal-800 focus-ring relative z-10"
         >
           {open ? <X size={22} /> : <Menu size={22} />}
         </button>
+        <span className="absolute inset-0 flex items-center justify-center font-display text-sm tracking-wide text-neon-500 pointer-events-none">
+          ADEVOS-X TECH
+        </span>
       </div>
 
       {/* Overlay for mobile */}
@@ -105,7 +103,7 @@ export default function Sidebar({ activeView, onNavigate }: SidebarProps) {
             rel="noopener noreferrer"
             className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-slate-300 hover:bg-charcoal-800 hover:text-neon-500 transition-colors focus-ring"
           >
-            <MessageCircle size={18} />
+            <i className="fa-brands fa-whatsapp text-lg w-[18px] text-center" aria-hidden="true" />
             <span>WhatsApp</span>
           </a>
           <a
@@ -114,7 +112,7 @@ export default function Sidebar({ activeView, onNavigate }: SidebarProps) {
             rel="noopener noreferrer"
             className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-slate-300 hover:bg-charcoal-800 hover:text-neon-500 transition-colors focus-ring"
           >
-            <Send size={18} />
+            <i className="fa-brands fa-telegram text-lg w-[18px] text-center" aria-hidden="true" />
             <span>Telegram</span>
           </a>
         </div>
