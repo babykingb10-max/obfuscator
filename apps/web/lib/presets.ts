@@ -1,6 +1,7 @@
 import { ObfuscationSettings, PresetLevel, ProjectPreset } from "./types";
 
 export const DEFAULT_SETTINGS: ObfuscationSettings = {
+  language: "auto",
   level: "medium",
   projectPreset: "none",
   stringArrayEncoding: "base64",
