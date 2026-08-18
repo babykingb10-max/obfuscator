@@ -46,8 +46,19 @@ export default function SettingsPanel({ settings, onChange }: SettingsPanelProps
   const update = (patch: Partial<ObfuscationSettings>) =>
     onChange({ ...settings, ...patch });
 
+  const showJsScopeNote = settings.language === "css" || settings.language === "json";
+
   return (
     <div className="space-y-8">
+      {showJsScopeNote && (
+        <div className="text-xs text-amber-300 bg-amber-500/5 border border-amber-500/30 rounded-md px-3 py-2">
+          {settings.language === "css" ? "CSS" : "JSON"} has no executable code to obfuscate, so
+          the controls below are ignored for this file -- only minification is applied. Switch
+          Language back to JavaScript/TypeScript (or HTML with embedded scripts) to use these
+          settings.
+        </div>
+      )}
+
       <section>
         <h3 className="text-sm font-semibold text-slate-200 mb-3">Protection level</h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
