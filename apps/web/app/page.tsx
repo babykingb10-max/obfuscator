@@ -7,12 +7,18 @@ import CodeEditorPanel from "@/components/CodeEditorPanel";
 import SettingsPanel from "@/components/SettingsPanel";
 import WatermarkSettings from "@/components/WatermarkSettings";
 import SecurityAnalyzer from "@/components/SecurityAnalyzer";
+import SecretGuardModal from "@/components/SecretGuardModal";
 import StatsBar from "@/components/StatsBar";
 import Toast, { ToastMessage } from "@/components/Toast";
 import { DEFAULT_SETTINGS } from "@/lib/presets";
 import { ObfuscationSyntaxError, runObfuscation } from "@/lib/obfuscate";
 import { analyzeSourceForSecrets } from "@/lib/securityScanner";
-import { ObfuscationResult, ObfuscationSettings, SecurityAlert } from "@/lib/types";
+import {
+  ObfuscationResult,
+  ObfuscationSettings,
+  SecurityAlert,
+  StringEncoding,
+} from "@/lib/types";
 import { VaultEntry, deleteVaultEntry, getVaultEntries, saveVaultEntry } from "@/lib/vault";
 import { getSavedWatermarkPrefs } from "@/lib/watermarkPrefs";
 
@@ -37,6 +43,7 @@ export default function Home() {
   const [scanned, setScanned] = useState(false);
   const [vaultEntries, setVaultEntries] = useState<VaultEntry[]>([]);
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [pendingSecretAlerts, setPendingSecretAlerts] = useState<SecurityAlert[]>([]);
 
   useEffect(() => {
     setVaultEntries(getVaultEntries());
@@ -57,18 +64,10 @@ export default function Home() {
     [scanned, sourceCode]
   );
 
-  const handleObfuscate = () => {
-    if (!sourceCode.trim()) {
-      setToast({
-        type: "warning",
-        title: "No code to obfuscate",
-        description: "Paste or upload your JavaScript code in the Input panel first.",
-      });
-      return;
-    }
-
+  // Actually performs the obfuscation and reports the result (or a syntax error).
+  const performObfuscate = (settingsOverride?: ObfuscationSettings) => {
     try {
-      const res = runObfuscation(sourceCode, settings, BRAND_NAME);
+      const res = runObfuscation(sourceCode, settingsOverride ?? settings, BRAND_NAME);
       setResult(res);
       setToast({ type: "success", title: "Code obfuscated successfully." });
     } catch (err) {
@@ -91,6 +90,28 @@ export default function Home() {
     }
   };
 
+  const handleObfuscate = () => {
+    if (!sourceCode.trim()) {
+      setToast({
+        type: "warning",
+        title: "No code to obfuscate",
+        description: "Paste or upload your JavaScript code in the Input panel first.",
+      });
+      return;
+    }
+
+    // Check for hard-coded secrets before running -- if any critical ones are
+    // found, ask the user how to proceed instead of silently obfuscating.
+    const freshAlerts = analyzeSourceForSecrets(sourceCode);
+    const criticalAlerts = freshAlerts.filter((a) => a.type === "critical");
+    if (criticalAlerts.length > 0) {
+      setPendingSecretAlerts(criticalAlerts);
+      return;
+    }
+
+    performObfuscate();
+  };
+
   const handleScan = () => {
     if (!sourceCode.trim()) {
       setToast({
@@ -104,18 +125,46 @@ export default function Home() {
     setToast({ type: "info", title: "Scan complete." });
   };
 
-  const handleFixAutomatically = (alert: SecurityAlert) => {
-    let next = { ...settings, level: "custom" as const };
-    if (alert.suggestedSettings.includes("stringArrayEncoding")) {
-      next = { ...next, stringArrayEncoding: "rc4" };
-    }
-    if (alert.suggestedSettings.includes("domainLock")) {
-      next = { ...next, locks: { ...next.locks, domainLockEnabled: true } };
-    }
-    if (alert.suggestedSettings.includes("deadCodeInjection")) {
-      next = { ...next, deadCodeInjection: true };
-    }
+  // Used by the inline Security Analyzer under "Scan code" -- applies the
+  // setting and takes the user straight to Advanced Settings to confirm it.
+  const handleApplyEncodingFromAnalyzer = (encoding: StringEncoding) => {
+    setSettings((prev) => ({ ...prev, stringArrayEncoding: encoding, level: "custom" }));
+    setView("settings");
+  };
+
+  const handleEnableDomainLockFromAnalyzer = () => {
+    setSettings((prev) => ({
+      ...prev,
+      level: "custom",
+      locks: { ...prev.locks, domainLockEnabled: true },
+    }));
+    setView("settings");
+  };
+
+  const handleEnableDeadCodeFromAnalyzer = () => {
+    setSettings((prev) => ({ ...prev, deadCodeInjection: true, level: "custom" }));
+    setView("settings");
+  };
+
+  // Used by the "detected secrets" modal shown right before obfuscating.
+  const handleApplyEncodingFromGuard = (encoding: StringEncoding) => {
+    const next: ObfuscationSettings = {
+      ...settings,
+      stringArrayEncoding: encoding,
+      level: "custom",
+    };
     setSettings(next);
+    setPendingSecretAlerts([]);
+    performObfuscate(next);
+  };
+
+  const handleObfuscateAnyway = () => {
+    setPendingSecretAlerts([]);
+    performObfuscate();
+  };
+
+  const handleCancelObfuscate = () => {
+    setPendingSecretAlerts([]);
   };
 
   const handleUploadInput = (content: string) => {
@@ -161,6 +210,14 @@ export default function Home() {
   return (
     <div className="flex flex-col lg:flex-row min-h-screen">
       <Toast toast={toast} onClose={() => setToast(null)} />
+      {pendingSecretAlerts.length > 0 && (
+        <SecretGuardModal
+          alerts={pendingSecretAlerts}
+          onApplyEncoding={handleApplyEncodingFromGuard}
+          onObfuscateAnyway={handleObfuscateAnyway}
+          onCancel={handleCancelObfuscate}
+        />
+      )}
       <Sidebar activeView={view} onNavigate={setView} />
 
       <main className="flex-1 min-w-0 p-4 lg:p-8 space-y-6">
@@ -200,7 +257,12 @@ export default function Home() {
             </div>
 
             {scanned && (
-              <SecurityAnalyzer alerts={alerts} onFixAutomatically={handleFixAutomatically} />
+              <SecurityAnalyzer
+                alerts={alerts}
+                onApplyEncoding={handleApplyEncodingFromAnalyzer}
+                onEnableDomainLock={handleEnableDomainLockFromAnalyzer}
+                onEnableDeadCodeInjection={handleEnableDeadCodeFromAnalyzer}
+              />
             )}
 
             <div className="grid lg:grid-cols-2 gap-4 h-[420px]">
