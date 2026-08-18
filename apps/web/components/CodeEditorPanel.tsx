@@ -24,7 +24,7 @@ interface CodeEditorPanelProps {
   onClear?: () => void;
 }
 
-const ACCEPTED_EXTENSIONS = ".js,.jsx,.ts,.tsx,.mjs,.cjs,.txt";
+const ACCEPTED_EXTENSIONS = ".js,.jsx,.ts,.tsx,.mjs,.cjs,.html,.htm,.css,.json,.txt";
 
 export default function CodeEditorPanel({
   title,
@@ -46,7 +46,14 @@ export default function CodeEditorPanel({
   };
 
   const handleDownload = () => {
-    const blob = new Blob([value], { type: "text/javascript" });
+    const ext = (downloadFileName || "output.js").split(".").pop()?.toLowerCase();
+    const mimeMap: Record<string, string> = {
+      js: "text/javascript",
+      html: "text/html",
+      css: "text/css",
+      json: "application/json",
+    };
+    const blob = new Blob([value], { type: mimeMap[ext ?? "js"] ?? "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -75,7 +82,11 @@ export default function CodeEditorPanel({
         <span className="text-xs font-medium text-slate-400 uppercase tracking-wide">
           {title}
         </span>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-slate-500 shrink-0">
+            Lines: {value ? value.split("\n").length : 0}
+          </span>
+          <div className="flex items-center gap-1">
           {onUpload && (
             <>
               <input
@@ -121,6 +132,7 @@ export default function CodeEditorPanel({
               <Eraser size={15} />
             </button>
           )}
+          </div>
         </div>
       </div>
       <div className="flex-1 min-h-[280px]">
