@@ -369,7 +369,7 @@ export default function Home() {
             </header>
             <div className="max-w-2xl space-y-4 text-sm text-slate-400 leading-relaxed">
               <p>
-                {BRAND_NAME} Obfuscator is a client-side JavaScript protection tool. Obfuscation,
+                {BRAND_NAME} is a client-side JavaScript protection tool. Obfuscation,
                 including string encoding, control flow flattening, and dead code injection, runs
                 entirely inside your browser. Nothing is uploaded to a server unless you choose to
                 save settings to an account.
