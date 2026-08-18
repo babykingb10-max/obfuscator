@@ -13,7 +13,9 @@ import Toast, { ToastMessage } from "@/components/Toast";
 import { DEFAULT_SETTINGS } from "@/lib/presets";
 import { ObfuscationSyntaxError, runObfuscation } from "@/lib/obfuscate";
 import { analyzeSourceForSecrets } from "@/lib/securityScanner";
+import { detectLanguage, detectLanguageFromFileName, LANGUAGE_LABELS } from "@/lib/languageDetect";
 import {
+  LanguageSetting,
   ObfuscationResult,
   ObfuscationSettings,
   SecurityAlert,
@@ -64,12 +66,42 @@ export default function Home() {
     [scanned, sourceCode]
   );
 
-  // Actually performs the obfuscation and reports the result (or a syntax error).
+  const resolvedLanguage = useMemo(
+    () => (settings.language === "auto" ? detectLanguage(sourceCode) : settings.language),
+    [settings.language, sourceCode]
+  );
+
+  const monacoLanguage: string = (() => {
+    switch (resolvedLanguage) {
+      case "typescript":
+      case "tsx":
+        return "typescript";
+      case "html":
+        return "html";
+      case "css":
+        return "css";
+      case "json":
+        return "json";
+      default:
+        return "javascript";
+    }
+  })();
+
+  // Success toast wording depends on whether this language could actually be
+  // obfuscated (javascript/typescript/jsx/tsx) or was only minified (html
+  // shell/css/json), so the user isn't told something was "obfuscated" when
+  // it was really just compacted.
   const performObfuscate = (settingsOverride?: ObfuscationSettings) => {
     try {
       const res = runObfuscation(sourceCode, settingsOverride ?? settings, BRAND_NAME);
       setResult(res);
-      setToast({ type: "success", title: "Code obfuscated successfully." });
+      setToast({
+        type: "success",
+        title:
+          res.mode === "obfuscated"
+            ? "Code obfuscated successfully."
+            : `${LANGUAGE_LABELS[res.language]} processed (minified) successfully.`,
+      });
     } catch (err) {
       if (err instanceof ObfuscationSyntaxError) {
         setToast({
@@ -167,10 +199,14 @@ export default function Home() {
     setPendingSecretAlerts([]);
   };
 
-  const handleUploadInput = (content: string) => {
+  const handleUploadInput = (content: string, fileName: string) => {
     setSourceCode(content);
     setResult(null);
     setScanned(false);
+    const fromExtension = detectLanguageFromFileName(fileName);
+    if (fromExtension) {
+      setSettings((prev) => ({ ...prev, language: fromExtension }));
+    }
   };
 
   const handleClearInput = () => {
@@ -225,10 +261,12 @@ export default function Home() {
           <>
             <header>
               <h1 className="font-display text-xl lg:text-2xl text-slate-100">
-                Obfuscate JavaScript
+                Obfuscate your code
               </h1>
               <p className="text-sm text-slate-500 mt-1">
-                Everything runs in your browser. Your source code is never uploaded to a server.
+                JavaScript, TypeScript, JSX and TSX are obfuscated. HTML has its inline scripts
+                obfuscated and the rest minified. CSS and JSON are minified. Everything runs in
+                your browser -- nothing is uploaded to a server.
               </p>
             </header>
 
@@ -254,6 +292,34 @@ export default function Home() {
                 <Trash2 size={16} />
                 Delete
               </button>
+
+              <div className="flex items-center gap-2 ml-auto">
+                <label htmlFor="language-select" className="text-xs text-slate-500">
+                  Language
+                </label>
+                <select
+                  id="language-select"
+                  value={settings.language}
+                  onChange={(e) =>
+                    setSettings((prev) => ({
+                      ...prev,
+                      language: e.target.value as LanguageSetting,
+                    }))
+                  }
+                  className="bg-charcoal-800 border border-charcoal-600 rounded-md px-2.5 py-1.5 text-xs text-slate-200 focus-ring"
+                >
+                  <option value="auto">
+                    Auto-detect ({LANGUAGE_LABELS[resolvedLanguage]})
+                  </option>
+                  <option value="javascript">JavaScript</option>
+                  <option value="typescript">TypeScript</option>
+                  <option value="jsx">JSX (React)</option>
+                  <option value="tsx">TSX (React + TypeScript)</option>
+                  <option value="html">HTML</option>
+                  <option value="css">CSS</option>
+                  <option value="json">JSON</option>
+                </select>
+              </div>
             </div>
 
             {scanned && (
@@ -272,13 +338,21 @@ export default function Home() {
                 onChange={setSourceCode}
                 onUpload={handleUploadInput}
                 onClear={handleClearInput}
+                language={monacoLanguage}
               />
               <CodeEditorPanel
                 title="Output"
                 value={result?.code ?? "// Obfuscated code will appear here"}
                 readOnly
-                downloadFileName="obfuscated.js"
+                downloadFileName={`obfuscated.${
+                  result
+                    ? { javascript: "js", typescript: "js", jsx: "js", tsx: "js", html: "html", css: "css", json: "json" }[
+                        result.language
+                      ]
+                    : "js"
+                }`}
                 onClear={handleClearOutput}
+                language={result ? monacoLanguage : "javascript"}
               />
             </div>
 
@@ -369,7 +443,7 @@ export default function Home() {
             </header>
             <div className="max-w-2xl space-y-4 text-sm text-slate-400 leading-relaxed">
               <p>
-                {BRAND_NAME} is a client-side JavaScript protection tool. Obfuscation,
+                {BRAND_NAME} Obfuscator is a client-side JavaScript protection tool. Obfuscation,
                 including string encoding, control flow flattening, and dead code injection, runs
                 entirely inside your browser. Nothing is uploaded to a server unless you choose to
                 save settings to an account.
