@@ -1,5 +1,10 @@
 import JavaScriptObfuscator from "javascript-obfuscator";
-import { ObfuscationResult, ObfuscationSettings } from "./types";
+import { ObfuscationResult, ObfuscationSettings, SourceLanguage } from "./types";
+import { detectLanguage } from "./languageDetect";
+import { transpileToJavaScript } from "./transpile";
+import { extractInlineScripts, minifyHtml, reinsertScripts } from "./htmlProcessor";
+import { minifyCss } from "./cssProcessor";
+import { minifyJson } from "./jsonProcessor";
 
 export class ObfuscationSyntaxError extends Error {
   line?: number;
@@ -63,7 +68,7 @@ function buildDomainLockGuard(settings: ObfuscationSettings): string {
   return `if (typeof window !== "undefined" && ${list}.indexOf(window.location.hostname) === -1) { throw new Error("Unauthorized domain."); }\n`;
 }
 
-function buildWatermark(settings: ObfuscationSettings, brandName: string): string {
+function buildJsWatermark(settings: ObfuscationSettings, brandName: string): string {
   if (!settings.watermark.enabled) return "";
   if (settings.watermark.useCustomName && settings.watermark.customName.trim()) {
     return `/*\n * Obfuscated by ${settings.watermark.customName.trim()}\n * Powered by ${brandName}\n */\n`;
@@ -71,26 +76,40 @@ function buildWatermark(settings: ObfuscationSettings, brandName: string): strin
   return `/*\n * Obfuscated & secured by ${brandName}\n * Advanced code protection engine\n */\n`;
 }
 
-export function runObfuscation(
-  sourceCode: string,
-  settings: ObfuscationSettings,
-  brandName: string
-): ObfuscationResult {
-  const start = performance.now();
+function buildHtmlWatermark(settings: ObfuscationSettings, brandName: string): string {
+  if (!settings.watermark.enabled) return "";
+  const who =
+    settings.watermark.useCustomName && settings.watermark.customName.trim()
+      ? settings.watermark.customName.trim()
+      : brandName;
+  return `<!-- Obfuscated & secured by ${who} | Powered by ${brandName} -->\n`;
+}
 
+function buildCssWatermark(settings: ObfuscationSettings, brandName: string): string {
+  if (!settings.watermark.enabled) return "";
+  const who =
+    settings.watermark.useCustomName && settings.watermark.customName.trim()
+      ? settings.watermark.customName.trim()
+      : brandName;
+  return `/* Secured by ${who} | Powered by ${brandName} */\n`;
+}
+
+/**
+ * Runs the actual javascript-obfuscator pass over a plain-JavaScript string.
+ * Used directly for .js/.ts/.jsx/.tsx input, and reused internally to
+ * obfuscate each <script> block found inside an .html file.
+ */
+function obfuscateJavaScript(jsSource: string, settings: ObfuscationSettings): string {
   const expiryGuard = buildExpiryGuard(settings);
   const domainGuard = buildDomainLockGuard(settings);
   const guardLineOffset = countLines(expiryGuard) + countLines(domainGuard);
-  const guardedSource = expiryGuard + domainGuard + sourceCode;
+  const guardedSource = expiryGuard + domainGuard + jsSource;
 
   const stringArrayEncoding =
-    settings.stringArrayEncoding === "none"
-      ? []
-      : [settings.stringArrayEncoding];
+    settings.stringArrayEncoding === "none" ? [] : [settings.stringArrayEncoding];
 
-  let obfuscated: string;
   try {
-    obfuscated = JavaScriptObfuscator.obfuscate(guardedSource, {
+    return JavaScriptObfuscator.obfuscate(guardedSource, {
       compact: settings.compact,
       controlFlowFlattening: settings.controlFlowFlattening,
       controlFlowFlatteningThreshold: settings.controlFlowFlatteningThreshold,
@@ -128,10 +147,34 @@ export function runObfuscation(
       column
     );
   }
+}
 
-  const watermark = buildWatermark(settings, brandName);
+function processJavaScriptFamily(
+  sourceCode: string,
+  settings: ObfuscationSettings,
+  brandName: string,
+  resolvedLanguage: Extract<SourceLanguage, "javascript" | "typescript" | "jsx" | "tsx">
+): ObfuscationResult {
+  const start = performance.now();
+
+  let jsSource: string;
+  let wasTranspiled: boolean;
+  try {
+    const transpiled = transpileToJavaScript(sourceCode, resolvedLanguage);
+    jsSource = transpiled.code;
+    wasTranspiled = transpiled.wasTranspiled;
+  } catch (err: any) {
+    const { line, column } = parseErrorLocation(err);
+    throw new ObfuscationSyntaxError(
+      cleanErrorMessage(err?.message ?? "Unable to parse this code."),
+      line,
+      column
+    );
+  }
+
+  const obfuscated = obfuscateJavaScript(jsSource, settings);
+  const watermark = buildJsWatermark(settings, brandName);
   const finalCode = watermark + obfuscated;
-
   const elapsedMs = Math.round((performance.now() - start) * 100) / 100;
 
   return {
@@ -139,7 +182,115 @@ export function runObfuscation(
     originalSizeBytes: byteSize(sourceCode),
     outputSizeBytes: byteSize(finalCode),
     elapsedMs,
+    language: resolvedLanguage,
+    wasTranspiled,
+    mode: "obfuscated",
   };
+}
+
+function processHtml(
+  sourceCode: string,
+  settings: ObfuscationSettings,
+  brandName: string
+): ObfuscationResult {
+  const start = performance.now();
+
+  const { htmlWithPlaceholders, scripts } = extractInlineScripts(sourceCode);
+
+  const obfuscatedScripts = scripts.map((script) => {
+    const jsResult = processJavaScriptFamily(
+      script,
+      { ...settings, watermark: { ...settings.watermark, enabled: false } },
+      brandName,
+      "javascript"
+    );
+    return jsResult.code;
+  });
+
+  const reinserted = reinsertScripts(htmlWithPlaceholders, obfuscatedScripts);
+  const minified = minifyHtml(reinserted);
+  const watermark = buildHtmlWatermark(settings, brandName);
+  const finalCode = watermark + minified;
+  const elapsedMs = Math.round((performance.now() - start) * 100) / 100;
+
+  return {
+    code: finalCode,
+    originalSizeBytes: byteSize(sourceCode),
+    outputSizeBytes: byteSize(finalCode),
+    elapsedMs,
+    language: "html",
+    wasTranspiled: false,
+    mode: scripts.length > 0 ? "obfuscated" : "minified",
+    note:
+      scripts.length > 0
+        ? `${scripts.length} inline <script> block${scripts.length > 1 ? "s were" : " was"} obfuscated. The rest of the HTML markup was minified -- HTML tags themselves cannot be obfuscated.`
+        : "No inline JavaScript was found, so this HTML was only minified.",
+  };
+}
+
+function processCss(
+  sourceCode: string,
+  settings: ObfuscationSettings,
+  brandName: string
+): ObfuscationResult {
+  const start = performance.now();
+  const minified = minifyCss(sourceCode);
+  const watermark = buildCssWatermark(settings, brandName);
+  const finalCode = watermark + minified;
+  const elapsedMs = Math.round((performance.now() - start) * 100) / 100;
+
+  return {
+    code: finalCode,
+    originalSizeBytes: byteSize(sourceCode),
+    outputSizeBytes: byteSize(finalCode),
+    elapsedMs,
+    language: "css",
+    wasTranspiled: false,
+    mode: "minified",
+    note: "CSS has no executable logic to hide, so it is minified rather than obfuscated.",
+  };
+}
+
+function processJson(sourceCode: string): ObfuscationResult {
+  const start = performance.now();
+  let minified: string;
+  try {
+    minified = minifyJson(sourceCode);
+  } catch (err: any) {
+    throw new ObfuscationSyntaxError(err?.message ?? "Invalid JSON.");
+  }
+  const elapsedMs = Math.round((performance.now() - start) * 100) / 100;
+
+  return {
+    code: minified,
+    originalSizeBytes: byteSize(sourceCode),
+    outputSizeBytes: byteSize(minified),
+    elapsedMs,
+    language: "json",
+    wasTranspiled: false,
+    mode: "minified",
+    note: "JSON is data, not code, so it is minified only. JSON also does not support comments, so no watermark is added.",
+  };
+}
+
+export function runObfuscation(
+  sourceCode: string,
+  settings: ObfuscationSettings,
+  brandName: string
+): ObfuscationResult {
+  const resolvedLanguage =
+    settings.language === "auto" ? detectLanguage(sourceCode) : settings.language;
+
+  switch (resolvedLanguage) {
+    case "html":
+      return processHtml(sourceCode, settings, brandName);
+    case "css":
+      return processCss(sourceCode, settings, brandName);
+    case "json":
+      return processJson(sourceCode);
+    default:
+      return processJavaScriptFamily(sourceCode, settings, brandName, resolvedLanguage);
+  }
 }
 
 export function formatBytes(bytes: number): string {
