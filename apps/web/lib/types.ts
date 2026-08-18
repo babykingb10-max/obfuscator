@@ -8,6 +8,16 @@ export type ProjectPreset =
 
 export type StringEncoding = "none" | "base64" | "rc4" | "hex";
 
+export type SourceLanguage =
+  | "javascript"
+  | "typescript"
+  | "jsx"
+  | "tsx"
+  | "html"
+  | "css"
+  | "json";
+export type LanguageSetting = "auto" | SourceLanguage;
+
 export interface WatermarkSettings {
   enabled: boolean;
   useCustomName: boolean;
@@ -29,6 +39,7 @@ export interface LockSettings {
 }
 
 export interface ObfuscationSettings {
+  language: LanguageSetting;
   level: PresetLevel;
   projectPreset: ProjectPreset;
   stringArrayEncoding: StringEncoding;
@@ -55,4 +66,8 @@ export interface ObfuscationResult {
   originalSizeBytes: number;
   outputSizeBytes: number;
   elapsedMs: number;
+  language: SourceLanguage;
+  wasTranspiled: boolean;
+  mode: "obfuscated" | "minified";
+  note?: string;
 }
