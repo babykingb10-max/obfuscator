@@ -2,15 +2,12 @@
   "name": "adevos-x-tech-obfuscator",
   "private": true,
   "version": "1.0.0",
-  "description": "Adevos-X Tech Obfuscator - monorepo (Next.js frontend + Express backend)",
+  "description": "Adevos-X Tech Obfuscator - a fully client-side code obfuscation tool (Next.js). No backend required.",
   "workspaces": [
-    "apps/web",
-    "apps/api"
+    "apps/web"
   ],
   "scripts": {
-    "dev:web": "npm run dev --workspace=apps/web",
-    "dev:api": "npm run dev --workspace=apps/api",
-    "build:web": "npm run build --workspace=apps/web",
-    "start:api": "npm run start --workspace=apps/api"
+    "dev": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspace=apps/web"
   }
 }
